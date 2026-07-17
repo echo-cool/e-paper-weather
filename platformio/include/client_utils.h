@@ -34,9 +34,15 @@ bool printLocalTime(tm *timeInfo);
 #ifdef USE_HTTP
   int getOWMonecall(WiFiClient &client, owm_resp_onecall_t &r);
   int getOWMairpollution(WiFiClient &client, owm_resp_air_pollution_t &r);
+  int getOpenMeteoForecast(WiFiClient &client, owm_resp_onecall_t &r);
+  int getOpenMeteoAirQuality(WiFiClient &client, owm_resp_air_pollution_t &r);
+  int getNWSAlerts(WiFiClient &client, std::vector<owm_alerts_t> &alerts);
 #else
   int getOWMonecall(WiFiClientSecure &client, owm_resp_onecall_t &r);
   int getOWMairpollution(WiFiClientSecure &client, owm_resp_air_pollution_t &r);
+  int getOpenMeteoForecast(WiFiClientSecure &client, owm_resp_onecall_t &r);
+  int getOpenMeteoAirQuality(WiFiClientSecure &client, owm_resp_air_pollution_t &r);
+  int getNWSAlerts(WiFiClientSecure &client, std::vector<owm_alerts_t> &alerts);
 #endif
 
 

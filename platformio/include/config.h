@@ -23,24 +23,37 @@
 
 // E-PAPER PANEL
 // This project supports the following E-Paper panels:
-//   DISP_BW_V2 - 7.5in e-Paper (v2)      800x480px  Black/White
-//   DISP_3C_B  - 7.5in e-Paper (B)       800x480px  Red/Black/White
-//   DISP_7C_F  - 7.3in ACeP e-Paper (F)  800x480px  7-Color
-//   DISP_BW_V1 - 7.5in e-Paper (v1)      640x384px  Black/White
+//   DISP_BW_V2   - 7.5in e-Paper (v2)      800x480px  Black/White
+//   DISP_3C_B    - 7.5in e-Paper (B)       800x480px  Red/Black/White
+//   DISP_7C_F    - 7.3in ACeP e-Paper (F)  800x480px  7-Color
+//   DISP_BW_V1   - 7.5in e-Paper (v1)      640x384px  Black/White
+//   DISP_SSD1683 - 4.2in e-Paper (SSD1683) 400x300px  Black/White
+//                  (Elecrow CrowPanel 4.2" ESP32-S3 E-Paper)
 // Uncomment the macro that identifies your physical panel.
+// (For the CrowPanel env, DISP_SSD1683 is passed via build_flags in
+//  platformio.ini, so no panel macro needs to be selected here.)
 // #define DISP_BW_V2
-#define DISP_3C_B
+// #define DISP_3C_B
 // #define DISP_7C_F
 // #define DISP_BW_V1
+#if !defined(DISP_BW_V2) && !defined(DISP_3C_B) && !defined(DISP_7C_F) && \
+    !defined(DISP_BW_V1) && !defined(DISP_SSD1683)
+#define DISP_3C_B
+#endif
 
 // E-PAPER DRIVER BOARD
 // The DESPI-C02 is the only officially supported driver board.
 // Support for the Waveshare rev2.2 and rev2.3 is deprecated.
 // The Waveshare rev2.2 is no longer in production.
 // Users of the Waveshare rev2.3 have reported experiencing low contrast issues.
+// DRIVER_CROWPANEL is for integrated boards (e.g. CrowPanel 4.2") where the
+// e-paper is hard-wired to the ESP32 on the PCB; it is set via build_flags.
 // Uncomment the macro that identifies your driver board hardware.
+// (Leave all commented for DISP_SSD1683 / DRIVER_CROWPANEL builds.)
+#if !defined(DRIVER_CROWPANEL)
 #define DRIVER_DESPI_C02
 // #define DRIVER_WAVESHARE
+#endif
 
 // 3 COLOR E-INK ACCENT COLOR
 // Defines the 3rd color to be used when a 3+ color display is selected.
@@ -148,8 +161,11 @@
 //   2030-12-31 23:59:59.
 // (uncomment exactly one)
 // #define USE_HTTP
-// #define USE_HTTPS_NO_CERT_VERIF
-#define USE_HTTPS_WITH_CERT_VERIF
+// The bundled cert.h CA no longer matches OpenWeatherMap's certificate chain
+// (X509 verification fails), so use encrypted HTTPS without cert verification.
+// Re-enable USE_HTTPS_WITH_CERT_VERIF after refreshing cert.h via cert/cert.py.
+// #define USE_HTTPS_WITH_CERT_VERIF
+#define USE_HTTPS_NO_CERT_VERIF
 
 // WIND DIRECTION INDICATOR
 // Choose whether the wind direction indicator should be an arrow, number, or
@@ -247,7 +263,36 @@
 //   You may choose to power your weather display with or without a battery.
 //   Low power behavior can be controlled in config.cpp.
 //   If you wish to disable battery monitoring set this macro to 0.
+//   The CrowPanel 4.2" has no documented battery-voltage ADC pin and runs
+//   always-on from USB, so battery monitoring is disabled for that board.
+#if defined(BOARD_CROWPANEL_S3)
+#define BATTERY_MONITORING 0
+#else
 #define BATTERY_MONITORING 1
+#endif
+
+// POWER MODE
+//   ALWAYS_ON = 1 keeps the ESP32 awake continuously: WiFi stays connected,
+//   the display refreshes every SLEEP_DURATION minutes, and OTA is always
+//   available. ALWAYS_ON = 0 uses the original deep-sleep power-saving flow.
+//   The CrowPanel build runs always-on so firmware can be updated over WiFi.
+#if defined(BOARD_CROWPANEL_S3)
+#define ALWAYS_ON 1
+#else
+#define ALWAYS_ON 0
+#endif
+
+// OVER-THE-AIR (OTA) FIRMWARE UPDATES
+//   When OTA_ENABLED = 1 the device runs an ArduinoOTA responder (for
+//   `upload_protocol = espota`) and a small web page at http://<device-ip>/
+//   for drag-and-drop .bin uploads from any browser. Requires ALWAYS_ON = 1.
+#if ALWAYS_ON
+#define OTA_ENABLED 1
+#else
+#define OTA_ENABLED 0
+#endif
+// Firmware version string, shown on the OTA web page and serial log.
+#define FW_VERSION "1.8-crowpanel"
 
 // NON-VOLATILE STORAGE (NVS) NAMESPACE
 #define NVS_NAMESPACE "weather_epd"
@@ -269,6 +314,9 @@ extern const uint8_t PIN_EPD_SCK;
 extern const uint8_t PIN_EPD_MISO;
 extern const uint8_t PIN_EPD_MOSI;
 extern const uint8_t PIN_EPD_PWR;
+#if defined(BOARD_CROWPANEL_S3)
+extern const uint8_t PIN_EPD_PWR_AUX;
+#endif
 extern const uint8_t PIN_BME_SDA;
 extern const uint8_t PIN_BME_SCL;
 extern const uint8_t PIN_BME_PWR;
@@ -282,14 +330,17 @@ extern const bool USE_SHT;
 extern const char *WIFI_SSID;
 extern const char *WIFI_PASSWORD;
 extern const unsigned long WIFI_TIMEOUT;
+extern const char *OTA_HOSTNAME;
+extern const char *OTA_PASSWORD;
 extern const unsigned HTTP_CLIENT_TCP_TIMEOUT;
 extern const String OWM_APIKEY;
 extern const String OWM_ENDPOINT;
 extern const String OWM_ONECALL_VERSION;
-extern const String LAT;
-extern const String LON;
-extern const String CITY_STRING;
-extern const char *TIMEZONE;
+extern String LAT;
+extern String LON;
+extern String CITY_STRING;
+extern String LOCATION_QUERY;
+extern String TIMEZONE;
 extern const char *TIME_FORMAT;
 extern const char *HOUR_FORMAT;
 extern const char *DATE_FORMAT;
@@ -310,10 +361,10 @@ extern const unsigned long LOW_BATTERY_SLEEP_INTERVAL;
 extern const unsigned long VERY_LOW_BATTERY_SLEEP_INTERVAL;
 
 // CONFIG VALIDATION - DO NOT MODIFY
-#if !(defined(DISP_BW_V2) ^ defined(DISP_3C_B) ^ defined(DISP_7C_F) ^ defined(DISP_BW_V1))
+#if !(defined(DISP_BW_V2) ^ defined(DISP_3C_B) ^ defined(DISP_7C_F) ^ defined(DISP_BW_V1) ^ defined(DISP_SSD1683))
 #error Invalid configuration. Exactly one display panel must be selected.
 #endif
-#if !(defined(DRIVER_WAVESHARE) ^ defined(DRIVER_DESPI_C02))
+#if !(defined(DRIVER_WAVESHARE) ^ defined(DRIVER_DESPI_C02) ^ defined(DRIVER_CROWPANEL))
 #error Invalid configuration. Exactly one driver board must be selected.
 #endif
 #if !(defined(LOCALE))

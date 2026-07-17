@@ -30,6 +30,8 @@
 #include "config.h"
 #include "display_utils.h"
 #include "icons/icons_196x196.h"
+#include "location.h"
+#include "ota.h"
 #include "renderer.h"
 #if defined(USE_HTTPS_WITH_CERT_VERIF) || defined(USE_HTTPS_WITH_CERT_VERIF)
 #include <WiFiClientSecure.h>
@@ -115,6 +117,7 @@ void beginDeepSleep(unsigned long &startTime, tm *timeInfo)
   esp_deep_sleep_start();
 } // end beginDeepSleep
 
+#if !ALWAYS_ON
 /* Program entry point.
  */
 void setup()
@@ -224,7 +227,7 @@ void setup()
   }
 
   // TIME SYNCHRONIZATION
-  configTzTime(TIMEZONE, NTP_SERVER_1, NTP_SERVER_2);
+  configTzTime(TIMEZONE.c_str(), NTP_SERVER_1, NTP_SERVER_2);
   bool timeConfigured = waitForSNTPSync(&timeInfo);
   if (!timeConfigured)
   {
@@ -249,11 +252,11 @@ void setup()
   WiFiClientSecure client;
   client.setCACert(cert_Sectigo_RSA_Domain_Validation_Secure_Server_CA);
 #endif
-  int rxStatus = getOWMonecall(client, owm_onecall);
+  int rxStatus = getOpenMeteoForecast(client, owm_onecall);
   if (rxStatus != HTTP_CODE_OK)
   {
     killWiFi();
-    statusStr = "One Call " + OWM_ONECALL_VERSION + " API";
+    statusStr = "Open-Meteo Forecast API";
     tmpStr = String(rxStatus, DEC) + ": " + getHttpResponsePhrase(rxStatus);
     initDisplay();
     do
@@ -263,11 +266,11 @@ void setup()
     powerOffDisplay();
     beginDeepSleep(startTime, &timeInfo);
   }
-  rxStatus = getOWMairpollution(client, owm_air_pollution);
+  rxStatus = getOpenMeteoAirQuality(client, owm_air_pollution);
   if (rxStatus != HTTP_CODE_OK)
   {
     killWiFi();
-    statusStr = "Air Pollution API";
+    statusStr = "Open-Meteo Air Quality API";
     tmpStr = String(rxStatus, DEC) + ": " + getHttpResponsePhrase(rxStatus);
     initDisplay();
     do
@@ -382,3 +385,214 @@ void setup()
 void loop()
 {
 } // end loop
+
+#else // ALWAYS_ON
+
+// ---------------------------------------------------------------------------
+// Always-on flow (CrowPanel): stay awake, keep WiFi connected, refresh the
+// display every SLEEP_DURATION minutes, and keep OTA available continuously.
+// ---------------------------------------------------------------------------
+
+static unsigned long lastUpdateMs = 0;
+static bool firstUpdateDone = false;
+static bool otaStarted = false;
+
+/* Render a full-screen message (draws to the canvas and blits to the panel). */
+static void showMessage(const uint8_t *bitmap, const String &ln1,
+                        const String &ln2 = "")
+{
+  initDisplay();
+  ssd1683BeginCanvas();
+  drawError(bitmap, ln1, ln2);
+  ssd1683CommitCanvas();
+  powerOffDisplay();
+}
+
+/* Fetch weather data and render the display once. Assumes WiFi is connected.
+ * Never sleeps and never drops WiFi (OTA must stay reachable). On an API error
+ * it draws the error screen and returns so loop() can retry next interval.
+ */
+static void runWeatherUpdate()
+{
+  String statusStr = {};
+  String tmpStr = {};
+  tm timeInfo = {};
+
+  // Keep the clock fresh (cheap, and recovers if NTP failed at boot).
+  bool timeConfigured = waitForSNTPSync(&timeInfo);
+  if (!timeConfigured)
+  {
+    Serial.println(TXT_TIME_SYNCHRONIZATION_FAILED);
+  }
+
+  // API requests
+#ifdef USE_HTTP
+  WiFiClient client;
+#elif defined(USE_HTTPS_NO_CERT_VERIF)
+  WiFiClientSecure client;
+  client.setInsecure();
+#elif defined(USE_HTTPS_WITH_CERT_VERIF)
+  WiFiClientSecure client;
+  client.setCACert(cert_Sectigo_RSA_Domain_Validation_Secure_Server_CA);
+#endif
+
+  int rxStatus = getOpenMeteoForecast(client, owm_onecall);
+  if (rxStatus != HTTP_CODE_OK)
+  {
+    statusStr = "Open-Meteo Forecast API";
+    tmpStr = String(rxStatus, DEC) + ": " + getHttpResponsePhrase(rxStatus);
+    showMessage(wi_cloud_down_196x196, statusStr, tmpStr);
+    return;
+  }
+  // Open-Meteo does not publish government alert products. For US locations,
+  // supplement it with active point alerts from the National Weather Service.
+  // Alert lookup failure is non-fatal so worldwide locations still render.
+  getNWSAlerts(client, owm_onecall.alerts);
+  rxStatus = getOpenMeteoAirQuality(client, owm_air_pollution);
+  if (rxStatus != HTTP_CODE_OK)
+  {
+    statusStr = "Open-Meteo Air Quality API";
+    tmpStr = String(rxStatus, DEC) + ": " + getHttpResponsePhrase(rxStatus);
+    showMessage(wi_cloud_down_196x196, statusStr, tmpStr);
+    return;
+  }
+
+  // No indoor sensor on this board.
+  float inTemp = NAN;
+  float inHumidity = NAN;
+
+  String refreshTimeStr;
+  getRefreshTimeStr(refreshTimeStr, timeConfigured, &timeInfo);
+  String dateStr;
+  getDateStr(dateStr, &timeInfo);
+  int wifiRSSI = WiFi.RSSI();
+
+  // RENDER FULL REFRESH (draw to the in-RAM canvas, then blit to the panel)
+  initDisplay();
+  ssd1683BeginCanvas();
+  drawGrid();
+  drawCurrentConditions(owm_onecall.current, owm_onecall.daily[0],
+                        owm_air_pollution, inTemp, inHumidity);
+  drawForecast(owm_onecall.daily, timeInfo);
+  drawLocationDate(CITY_STRING, dateStr);
+  drawOutlookGraph(owm_onecall.hourly, owm_onecall.current, timeInfo);
+#if DISPLAY_ALERTS
+  drawAlerts(owm_onecall.alerts, CITY_STRING, dateStr);
+#endif
+  drawStatusBar(statusStr, refreshTimeStr, wifiRSSI, UINT32_MAX);
+  ssd1683CommitCanvas();
+  powerOffDisplay();
+
+  Serial.println(TXT_SUCCESS);
+} // end runWeatherUpdate
+
+/* Program entry point (always-on). */
+void setup()
+{
+  Serial.begin(115200);
+  delay(100);
+  Serial.println();
+  Serial.println("esp32-weather-epd " FW_VERSION " (always-on + OTA)");
+
+  loadLocationSettings();
+
+  // A reset can otherwise leave the previous e-paper image visible for many
+  // seconds. Perform a real panel refresh to white before any network work.
+  initDisplay();
+  ssd1683ConditionPanel();
+  powerOffDisplay();
+
+#if !defined(BOARD_CROWPANEL_S3)
+  disableBuiltinLED();
+#endif
+
+  // START WIFI (kept connected for the lifetime of the device)
+  int wifiRSSI = 0;
+  wl_status_t wifiStatus = startWiFi(wifiRSSI);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(false);
+
+  if (wifiStatus != WL_CONNECTED)
+  { // show an error now; loop() will keep retrying the connection
+    Serial.println(TXT_WIFI_CONNECTION_FAILED);
+    showMessage(wifi_x_196x196,
+                wifiStatus == WL_NO_SSID_AVAIL ? TXT_NETWORK_NOT_AVAILABLE
+                                               : TXT_WIFI_CONNECTION_FAILED);
+  }
+
+  // TIME SYNCHRONIZATION
+  configTzTime(TIMEZONE.c_str(), NTP_SERVER_1, NTP_SERVER_2);
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+#if OTA_ENABLED
+    initOTA();
+    otaStarted = true;
+#endif
+    runWeatherUpdate();
+    firstUpdateDone = true;
+    lastUpdateMs = millis();
+  }
+
+  // Dump a screenshot of whatever is now on screen over Serial so the UI can be
+  // inspected without reading the panel. Also available at http://<ip>/.
+  ssd1683SerialDumpScreenshot();
+} // end setup
+
+/* Main loop (always-on): service OTA and refresh on the configured interval. */
+void loop()
+{
+  // On-demand screenshot: send 's' over the serial monitor to dump the current
+  // screen as a base64 BMP.
+  if (Serial.available() > 0)
+  {
+    int ch = Serial.read();
+    if (ch == 's' || ch == 'S')
+    {
+      ssd1683SerialDumpScreenshot();
+    }
+  }
+
+  // Recover WiFi if it dropped.
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    static unsigned long lastReconnectMs = 0;
+    if (millis() - lastReconnectMs > 10000UL)
+    {
+      lastReconnectMs = millis();
+      Serial.println("[wifi] reconnecting...");
+      WiFi.reconnect();
+    }
+    delay(50);
+    return;
+  }
+
+  // WiFi is up: make sure OTA is running (it needs an IP address to start).
+#if OTA_ENABLED
+  if (!otaStarted)
+  {
+    initOTA();
+    otaStarted = true;
+  }
+  handleOTA();
+#endif
+
+  // Periodic display refresh (skipped while a firmware upload is in progress).
+  const unsigned long intervalMs =
+      static_cast<unsigned long>(SLEEP_DURATION) * 60UL * 1000UL;
+  bool due = !firstUpdateDone || (millis() - lastUpdateMs >= intervalMs);
+  if (due
+#if OTA_ENABLED
+      && !otaInProgress()
+#endif
+  )
+  {
+    runWeatherUpdate();
+    firstUpdateDone = true;
+    lastUpdateMs = millis();
+  }
+
+  delay(10);
+} // end loop
+
+#endif // ALWAYS_ON

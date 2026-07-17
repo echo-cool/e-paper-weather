@@ -67,6 +67,8 @@ const uint8_t *getWiFiBitmap16(int rssi);
 const uint8_t *getForecastBitmap64(const owm_daily_t &daily);
 const uint8_t *getCurrentConditionsBitmap196(const owm_current_t &current,
                                              const owm_daily_t   &today);
+const uint8_t *getCurrentConditionsBitmap96(const owm_current_t &current,
+                                            const owm_daily_t   &today);
 const uint8_t *getAlertBitmap32(const owm_alerts_t &alert);
 const uint8_t *getAlertBitmap48(const owm_alerts_t &alert);
 enum alert_category getAlertCategory(const owm_alerts_t &alert);

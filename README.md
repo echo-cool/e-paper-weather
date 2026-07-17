@@ -23,6 +23,35 @@ Here are two examples utilizing various configuration options:
   <img src="showcase/demo-london.jpg" width="49%" />
 </p>
 
+## CrowPanel ESP32-S3 4.2-inch build
+
+The PlatformIO project in `platformio/` supports the Elecrow CrowPanel 4.2-inch
+400x300 e-paper HMI. The default environment targets the current board revision
+with a green circular sticker on the rear. Elecrow changed the display
+controller protocol on that revision even though the GPIO pinout stayed the
+same. For an original board without the green sticker, use the environment name
+ending in `_legacy`.
+
+Configure Wi-Fi, OpenWeatherMap, location, time zone, and units in
+`platformio/src/config.cpp` and `platformio/include/config.h`, then build and do
+the first full USB flash from the repository root:
+
+```powershell
+cd platformio
+pio run -e crowpanel_esp32s3_42_epaper
+pio run -e crowpanel_esp32s3_42_epaper -t upload --upload-port COM4
+```
+
+Replace `COM4` with the port shown by `pio device list`. The USB flash writes
+the bootloader, dual-OTA partition table, and application together. The device
+then stays online and prints its IP address and OTA URL at 115200 baud.
+
+For later updates, open `http://crowpanel-weather.local/` (or the printed IP),
+select `.pio/build/crowpanel_esp32s3_42_epaper/firmware.bin`, and upload it. The
+same page shows a framebuffer screenshot at `/screenshot.bmp`. PlatformIO
+`espota` uploads are also supported; uncomment `upload_protocol` and
+`upload_port` at the end of the CrowPanel environment in `platformio.ini`.
+
 
 ## Contents
 
