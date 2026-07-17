@@ -1,0 +1,76 @@
+name: release
+
+# Build the firmware and publish a GitHub Release whenever a version tag is
+# pushed to main, e.g.:
+#   git tag v1.1.0 && git push origin v1.1.0
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # required to create the release
+
+jobs:
+  release:
+    name: Build & release CrowPanel firmware
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.cache/pip
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio/platformio.ini') }}
+          restore-keys: ${{ runner.os }}-pio-
+
+      - name: Install PlatformIO Core
+        run: pip install --upgrade platformio
+
+      - name: Build firmware
+        run: pio run -d platformio -e crowpanel_esp32s3_42_epaper
+
+      - name: Collect release artifacts
+        run: |
+          set -eu
+          SRC=platformio/.pio/build/crowpanel_esp32s3_42_epaper
+          DEST=release
+          mkdir -p "$DEST"
+          TAG="${GITHUB_REF_NAME}"
+          cp "$SRC/firmware.bin"    "$DEST/crowpanel-weather-$TAG-firmware.bin"
+          cp "$SRC/bootloader.bin"  "$DEST/crowpanel-weather-$TAG-bootloader.bin"
+          cp "$SRC/partitions.bin"  "$DEST/crowpanel-weather-$TAG-partitions.bin"
+          # Merged single-file image (flash at 0x0) — produced by the core 3.x build.
+          if [ -f "$SRC/firmware.factory.bin" ]; then
+            cp "$SRC/firmware.factory.bin" "$DEST/crowpanel-weather-$TAG-factory.bin"
+          fi
+          ls -la "$DEST"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release/*
+          body: |
+            ## CrowPanel ESP32-S3 4.2" e-paper weather display — ${{ github.ref_name }}
+
+            ### Flashing
+
+            **Merged image (easiest)** — flash `*-factory.bin` at offset `0x0`:
+            ```
+            esptool.py --chip esp32s3 write_flash 0x0 crowpanel-weather-${{ github.ref_name }}-factory.bin
+            ```
+
+            **Over-the-air** — open `http://<device-ip>/` in a browser and upload
+            `*-firmware.bin`, or use `pio run -e crowpanel_esp32s3_42_epaper -t upload`
+            with `upload_protocol = espota`.
+
+            > Note: WiFi credentials and the OpenWeatherMap API key are compiled in
+            > via `platformio/src/config.cpp`; build from source to set your own.

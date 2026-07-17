@@ -1,33 +1,36 @@
-name: PlatformIO CI
+name: build
 
+# Verify the firmware compiles on every push / PR to main.
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
-
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        locations: [platformio]
-
+    name: Build CrowPanel ESP32-S3 4.2"
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/cache@v3
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # 3.12 avoids the PlatformIO/pathlib issues seen on very new Pythons.
+          python-version: '3.12'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
         with:
           path: |
-            ~/.cache/pip
             ~/.platformio/.cache
-          key: ${{ runner.os }}-pio
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
+            ~/.cache/pip
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio/platformio.ini') }}
+          restore-keys: ${{ runner.os }}-pio-
+
       - name: Install PlatformIO Core
         run: pip install --upgrade platformio
 
-      - name: Build PlatformIO Project
-        run: pio run -d ${{ matrix.locations }}
+      - name: Build firmware
+        run: pio run -d platformio -e crowpanel_esp32s3_42_epaper
