@@ -5,14 +5,17 @@
 ## CrowPanel 4.2" variant
 
 <p align="center">
-  <img src="showcase/crowpanel-4.2-demo.png" width="400" alt="CrowPanel 4.2 inch weather display" />
+  <img src="showcase/demo.jpg" width="600" alt="CrowPanel 4.2 inch weather display running" />
+</p>
+<p align="center">
+  <img src="showcase/crowpanel-4.2-demo.png" width="400" alt="On-device screenshot (400x300)" />
+  <br><sub>The running device (top) and a pixel-exact capture from <code>/screenshot.bmp</code> (bottom).</sub>
 </p>
 
 A dense 400×300 layout: current conditions (weather icon, temperature,
 feels-like, and daily Hi/Lo) with a stats column (humidity, wind, pressure, UV
 index, air quality, sunrise/sunset), plus a combined **24-hour precipitation /
-temperature / UV chart** along the bottom. *(The image above was captured live
-from the device — see On-device screenshots below.)*
+temperature / UV chart** along the bottom.
 
 ### Highlights
 
