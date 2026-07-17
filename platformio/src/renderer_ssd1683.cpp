@@ -121,7 +121,10 @@ static void drawStatRow(int y, const String &label, const String &value,
 void drawGrid()
 {
   fb.drawFastHLine(0, HEADER_H, DISP_WIDTH, INK);
-  fb.drawFastHLine(0, MAIN_BOTTOM, DISP_WIDTH, INK);
+  // No divider between the summary and the chart: the stats rows are spaced
+  // independently of MAIN_BOTTOM, so a fixed full-width line here collided
+  // with them (cutting between Sunrise and Sunset), and the chart below has
+  // its own frame anyway.
   fb.drawFastHLine(0, STATUS_TOP, DISP_WIDTH, INK);
   fb.drawFastVLine(COL_DIVIDER_X, HEADER_H + 3, MAIN_BOTTOM - HEADER_H - 6, INK);
 }
