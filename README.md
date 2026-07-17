@@ -1,5 +1,60 @@
 # ESP32 E-Paper Weather Display
 
+> **This fork** ports esp32-weather-epd to the **Elecrow CrowPanel ESP32-S3 4.2" E-Paper HMI Display** (SSD1683, 400×300, black/white) and turns it into an always-on, wirelessly-updatable weather station. The original 7.5" / FireBeetle documentation follows the CrowPanel section below.
+
+## CrowPanel 4.2" variant
+
+<p align="center">
+  <img src="showcase/crowpanel-4.2-demo.png" width="400" alt="CrowPanel 4.2 inch weather display" />
+</p>
+
+A dense 400×300 layout: current conditions (weather icon, temperature,
+feels-like, and daily Hi/Lo) with a stats column (humidity, wind, pressure, UV
+index, air quality, sunrise/sunset), plus a combined **24-hour precipitation /
+temperature / UV chart** along the bottom. *(The image above was captured live
+from the device — see On-device screenshots below.)*
+
+### Highlights
+
+- **Board:** Elecrow CrowPanel ESP32-S3 4.2" — ESP32-S3-WROOM-1-N8R8 (8 MB flash + 8 MB PSRAM), **SSD1683** e-paper controller, 400×300 black/white.
+- **No API key required:** weather and air quality come from [Open-Meteo](https://open-meteo.com) and alerts from the US National Weather Service — all free and key-less. City/postal-code lookups use Open-Meteo geocoding.
+- **Always-on + OTA:** stays awake on Wi-Fi and refreshes on an interval (no deep sleep). Update firmware over the air from a browser at `http://<device-ip>/`, or with `pio ... -t upload` over `espota` — no USB needed after the first flash.
+- **Web-based location config:** set the weather location by city or postal code from the same page; it is geocoded and saved to NVS (no reflash required).
+- **On-device screenshots:** the exact rendered frame is served at `http://<device-ip>/screenshot.bmp` (and dumped as base64 over serial), so you can see what's on the panel without looking at it.
+- **CI + releases:** GitHub Actions verifies the build on every push/PR, and pushing a `v*` tag publishes a Release with ready-to-flash binaries.
+
+### Wiring
+
+The e-paper is integrated on the board, so these GPIOs are fixed (defined in [config.cpp](platformio/src/config.cpp)):
+
+| Signal | GPIO | Signal | GPIO |
+|--------|:----:|--------|:----:|
+| CS  | 45 | SCK  | 12 |
+| DC  | 46 | MOSI | 11 |
+| RST | 47 | BUSY | 48 |
+| PWR (enable) | 7 | | |
+
+### Build, flash, and configure
+
+1. Open the `platformio` folder in VS Code with the PlatformIO extension.
+2. Set your Wi-Fi credentials: `cp platformio/include/secrets.h.example platformio/include/secrets.h` and edit it. `secrets.h` is gitignored. **No weather API key is needed** — data comes from Open-Meteo. Set the initial location in [config.cpp](platformio/src/config.cpp) (or change it later from the web UI).
+3. Build & upload the `crowpanel_esp32s3_42_epaper` environment.
+   - On **Windows**, run PlatformIO from **PowerShell** (`pio run -e crowpanel_esp32s3_42_epaper -t upload`); running `pio` under Git Bash / MSYS trips the toolchain's esptool packaging.
+4. After the first USB flash, update over the air: open `http://<device-ip>/` (the IP is printed on serial as "OTA ready") and upload a new `firmware.bin`, or set `upload_protocol = espota` and `upload_port = <ip>` in [platformio.ini](platformio/platformio.ini).
+
+### Releasing
+
+Push a version tag to build and publish binaries automatically:
+
+```sh
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+The [release workflow](.github/workflows/release.yaml) attaches the individual bins and a merged `factory.bin` (flash at `0x0`) to a new GitHub Release.
+
+---
+
 This is a weather display powered by a wifi-enabled ESP32 microcontroller and a 7.5in E-Paper (aka E-ink) display. Current and forecasted weather data is obtained from the OpenWeatherMap API. A sensor provides the display with accurate indoor temperature and humidity.
 
 <p float="left">
@@ -22,6 +77,35 @@ Here are two examples utilizing various configuration options:
   <img src="showcase/demo-new-york.jpg" width="49%" />
   <img src="showcase/demo-london.jpg" width="49%" />
 </p>
+
+## CrowPanel ESP32-S3 4.2-inch build
+
+The PlatformIO project in `platformio/` supports the Elecrow CrowPanel 4.2-inch
+400x300 e-paper HMI. The default environment targets the current board revision
+with a green circular sticker on the rear. Elecrow changed the display
+controller protocol on that revision even though the GPIO pinout stayed the
+same. For an original board without the green sticker, use the environment name
+ending in `_legacy`.
+
+Configure Wi-Fi, OpenWeatherMap, location, time zone, and units in
+`platformio/src/config.cpp` and `platformio/include/config.h`, then build and do
+the first full USB flash from the repository root:
+
+```powershell
+cd platformio
+pio run -e crowpanel_esp32s3_42_epaper
+pio run -e crowpanel_esp32s3_42_epaper -t upload --upload-port COM4
+```
+
+Replace `COM4` with the port shown by `pio device list`. The USB flash writes
+the bootloader, dual-OTA partition table, and application together. The device
+then stays online and prints its IP address and OTA URL at 115200 baud.
+
+For later updates, open `http://crowpanel-weather.local/` (or the printed IP),
+select `.pio/build/crowpanel_esp32s3_42_epaper/firmware.bin`, and upload it. The
+same page shows a framebuffer screenshot at `/screenshot.bmp`. PlatformIO
+`espota` uploads are also supported; uncomment `upload_protocol` and
+`upload_port` at the end of the CrowPanel environment in `platformio.ini`.
 
 
 ## Contents
@@ -235,6 +319,8 @@ PlatformIO for VSCode is used for managing dependencies, code compilation, and u
       - If you are getting errors during the upload process, you may need to install drivers to allow you to upload code to the ESP32.
 
 ### OpenWeatherMap API Key
+
+> **Not needed for the CrowPanel build.** This fork uses Open-Meteo (no API key). The section below applies only to the original 7.5" OpenWeatherMap-based build.
 
 Sign up here to get an API key; it's free. <https://openweathermap.org/api>
 

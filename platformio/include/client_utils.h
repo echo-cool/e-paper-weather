@@ -31,12 +31,16 @@ wl_status_t startWiFi(int &wifiRSSI);
 void killWiFi();
 bool waitForSNTPSync(tm *timeInfo);
 bool printLocalTime(tm *timeInfo);
+// Weather + air quality come from Open-Meteo (no API key); alerts from the US
+// National Weather Service. All are free and key-less.
 #ifdef USE_HTTP
-  int getOWMonecall(WiFiClient &client, owm_resp_onecall_t &r);
-  int getOWMairpollution(WiFiClient &client, owm_resp_air_pollution_t &r);
+  int getOpenMeteoForecast(WiFiClient &client, owm_resp_onecall_t &r);
+  int getOpenMeteoAirQuality(WiFiClient &client, owm_resp_air_pollution_t &r);
+  int getNWSAlerts(WiFiClient &client, std::vector<owm_alerts_t> &alerts);
 #else
-  int getOWMonecall(WiFiClientSecure &client, owm_resp_onecall_t &r);
-  int getOWMairpollution(WiFiClientSecure &client, owm_resp_air_pollution_t &r);
+  int getOpenMeteoForecast(WiFiClientSecure &client, owm_resp_onecall_t &r);
+  int getOpenMeteoAirQuality(WiFiClientSecure &client, owm_resp_air_pollution_t &r);
+  int getNWSAlerts(WiFiClientSecure &client, std::vector<owm_alerts_t> &alerts);
 #endif
 
 

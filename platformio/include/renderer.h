@@ -56,6 +56,38 @@ extern GxEPD2_BW<GxEPD2_750,
                  GxEPD2_750::HEIGHT>
     display;
 #endif
+#ifdef DISP_SSD1683
+#define DISP_WIDTH 400
+#define DISP_HEIGHT 300
+#include <GxEPD2_BW.h>
+// The CrowPanel 4.2" (SSD1683) works with the GYE042A87 driver per the
+// reference GxEPD2 example; GDEY042T81 (also SSD1683 400x300) left BUSY stuck.
+extern GxEPD2_BW<GxEPD2_420_GYE042A87,
+                 GxEPD2_420_GYE042A87::HEIGHT>
+    display;
+// The SSD1683 layout renders into an in-RAM 1-bit canvas which is then blitted
+// to the e-paper. This lets the firmware serve a screenshot of exactly what is
+// on screen (the panel itself cannot be read back).
+extern GFXcanvas1 fb;
+void ssd1683GpioInit();     // configure the bit-banged SPI GPIOs
+void ssd1683Sleep();        // deep-sleep the SSD1683 controller
+void ssd1683SelfTest();     // diagnostic: power/reset/BUSY probe + test pattern
+void ssd1683BeginCanvas();  // clear the canvas to white before drawing
+void ssd1683CommitCanvas(); // push the canvas to the e-paper panel
+void ssd1683ConditionPanel(); // boot-only black/white ghosting cleanup
+// Build a 1-bit BMP of the current canvas into 'out'; returns its size.
+size_t ssd1683BuildBmp(std::vector<uint8_t> &out);
+// Print the current canvas as a base64 BMP over Serial (framed by markers).
+void ssd1683SerialDumpScreenshot();
+// Full-screen OTA progress frame (drawn into the canvas like the other draw
+// helpers). percent < 0 draws the bar frame without a fill or percent label.
+void drawOtaProgress(int percent, const String &statusLine);
+#endif
+
+// Global Adafruit_GFX drawing target used by the shared text helpers below.
+// Defaults to the e-paper (&display); the SSD1683 build points it at the
+// in-RAM canvas (&fb) in initDisplay().
+extern Adafruit_GFX *g_gfx;
 
 typedef enum alignment
 {

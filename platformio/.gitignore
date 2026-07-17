@@ -1,2 +1,5 @@
 .pio
 .vscode
+
+# Local Wi-Fi credentials — never commit. Copy include/secrets.h.example instead.
+include/secrets.h

@@ -77,10 +77,24 @@ GxEPD2_BW<GxEPD2_750,
                    PIN_EPD_RST,
                    PIN_EPD_BUSY));
 #endif
+#ifdef DISP_SSD1683
+GxEPD2_BW<GxEPD2_420_GYE042A87,
+          GxEPD2_420_GYE042A87::HEIGHT>
+    display(
+        GxEPD2_420_GYE042A87(PIN_EPD_CS,
+                             PIN_EPD_DC,
+                             PIN_EPD_RST,
+                             PIN_EPD_BUSY));
+#endif
 
 #ifndef ACCENT_COLOR
 #define ACCENT_COLOR GxEPD_BLACK
 #endif
+
+// Shared text helpers draw through this target. It defaults to the e-paper
+// display; the SSD1683 build repoints it at the in-RAM canvas (see initDisplay)
+// so the same helpers populate the framebuffer used for screenshots.
+Adafruit_GFX *g_gfx = &display;
 
 int timeToXPixel(time_t time, int graphStartX, int graphWidth, time_t startTime, time_t endTime)
 {
@@ -93,7 +107,7 @@ uint16_t getStringWidth(const String &text)
 {
   int16_t x1, y1;
   uint16_t w, h;
-  display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+  g_gfx->getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
   return w;
 }
 
@@ -103,7 +117,7 @@ uint16_t getStringHeight(const String &text)
 {
   int16_t x1, y1;
   uint16_t w, h;
-  display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+  g_gfx->getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
   return h;
 }
 
@@ -114,8 +128,8 @@ void drawString(int16_t x, int16_t y, const String &text, alignment_t alignment,
 {
   int16_t x1, y1;
   uint16_t w, h;
-  display.setTextColor(color);
-  display.getTextBounds(text, x, y, &x1, &y1, &w, &h);
+  g_gfx->setTextColor(color);
+  g_gfx->getTextBounds(text, x, y, &x1, &y1, &w, &h);
   if (alignment == RIGHT)
   {
     x = x - w;
@@ -124,8 +138,8 @@ void drawString(int16_t x, int16_t y, const String &text, alignment_t alignment,
   {
     x = x - w / 2;
   }
-  display.setCursor(x, y);
-  display.print(text);
+  g_gfx->setCursor(x, y);
+  g_gfx->print(text);
   return;
 } // end drawString
 
@@ -151,7 +165,7 @@ void drawMultiLnString(int16_t x, int16_t y, const String &text,
     int16_t x1, y1;
     uint16_t w, h;
 
-    display.getTextBounds(textRemaining, 0, 0, &x1, &y1, &w, &h);
+    g_gfx->getTextBounds(textRemaining, 0, 0, &x1, &y1, &w, &h);
 
     int endIndex = textRemaining.length();
     // check if remaining text is to wide, if it is then print what we can
@@ -204,13 +218,13 @@ void drawMultiLnString(int16_t x, int16_t y, const String &text,
         if (current_line < max_lines - 1)
         {
           // this is not the last line
-          display.getTextBounds(subStr, 0, 0, &x1, &y1, &w, &h);
+          g_gfx->getTextBounds(subStr, 0, 0, &x1, &y1, &w, &h);
         }
         else
         {
           // this is the last line, we need to make sure there is space for
           // ellipsis
-          display.getTextBounds(subStr + "...", 0, 0, &x1, &y1, &w, &h);
+          g_gfx->getTextBounds(subStr + "...", 0, 0, &x1, &y1, &w, &h);
           if (w <= max_width)
           {
             // ellipsis fit, add them to subStr
@@ -239,6 +253,17 @@ void initDisplay()
 {
   pinMode(PIN_EPD_PWR, OUTPUT);
   digitalWrite(PIN_EPD_PWR, HIGH);
+
+#ifdef DISP_SSD1683
+  // The CrowPanel's SSD1683 is driven by a self-contained bit-banged SPI driver
+  // (see renderer_ssd1683.cpp). GxEPD2's hardware-SPI path leaves BUSY stuck on
+  // this board, so GxEPD2 is used only to draw into the in-RAM canvas (fb); the
+  // panel refresh uses the bit-banged sequence from Elecrow's reference driver.
+  ssd1683GpioInit();
+  delay(200); // let both CrowPanel display power rails stabilize before init
+  g_gfx = &fb; // route shared text helpers to the canvas
+  return;
+#else
 #ifdef DRIVER_WAVESHARE
   display.init(115200, true, 2, false);
   // remap spi for waveshare
@@ -260,8 +285,10 @@ void initDisplay()
   display.setFullWindow();
   display.firstPage(); // use paged drawing mode, sets fillScreen(GxEPD_WHITE)
   return;
+#endif // DISP_SSD1683
 } // end initDisplay
 
+#ifndef DISP_SSD1683
 void drawGrid()
 {
   display.drawFastHLine(0, (WEATHER_DETAILS_TOP_POS + 98 + 69 / 2 + 38 - 6 + 26) / 2, 800, GxEPD_BLACK);
@@ -269,16 +296,26 @@ void drawGrid()
   display.drawFastVLine(380, 0, (WEATHER_DETAILS_TOP_POS + 98 + 69 / 2 + 38 - 6 + 26) / 2, GxEPD_BLACK);
   // 98 + 69 / 2 + 38 - 6 + 26
 }
+#endif // !DISP_SSD1683
 
 /* Power-off e-paper display
  */
 void powerOffDisplay()
 {
+#ifdef DISP_SSD1683
+  ssd1683Sleep(); // deep-sleep the SSD1683 controller
+#else
   display.hibernate(); // turns powerOff() and sets controller to deep sleep for
                        // minimum power use
+#endif
   digitalWrite(PIN_EPD_PWR, LOW);
   return;
-} // end initDisplay
+} // end powerOffDisplay
+
+// The following layout functions target the 800x480 / 640x384 panels. The
+// dense 400x300 layout for the SSD1683 (CrowPanel 4.2") lives in
+// renderer_ssd1683.cpp, which implements these same function signatures.
+#ifndef DISP_SSD1683
 
 /* This function is responsible for drawing the current conditions and
  * associated icons.
@@ -1435,3 +1472,5 @@ void drawCurrentConditions(const owm_current_t &current,
                                bitmap_196x196, 196, 196, ACCENT_COLOR);
     return;
   } // end drawError
+
+#endif // !DISP_SSD1683
