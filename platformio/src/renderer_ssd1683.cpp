@@ -121,6 +121,9 @@ static void drawStatRow(int y, const String &label, const String &value,
 void drawGrid()
 {
   fb.drawFastHLine(0, HEADER_H, DISP_WIDTH, INK);
+  // Divider between the summary and the chart. Everything above it (the H/L
+  // row on the left and the last stats row on the right) must keep its
+  // baseline at <= 139 so the line has clearance and never cuts a row.
   fb.drawFastHLine(0, MAIN_BOTTOM, DISP_WIDTH, INK);
   fb.drawFastHLine(0, STATUS_TOP, DISP_WIDTH, INK);
   fb.drawFastVLine(COL_DIVIDER_X, HEADER_H + 3, MAIN_BOTTOM - HEADER_H - 6, INK);
@@ -163,9 +166,10 @@ void drawCurrentConditions(const owm_current_t &current,
   fb.setFont(&FONT_7pt8b);
   drawMultiLnString(98, 109, desc, CENTER, 190, 2, 13, INK);
 
-  // daily high / low
+  // daily high / low — baseline aligned with the last stats row (sunset) so
+  // both columns keep the same clearance above the MAIN_BOTTOM divider.
   fb.setFont(&FONT_8pt8b);
-  drawString(98, 146, "H:" + fmtTemp(today.temp.max)
+  drawString(98, 139, "H:" + fmtTemp(today.temp.max)
                           + "  L:" + fmtTemp(today.temp.min), CENTER, INK);
 
   // --- Right: stats column ---
