@@ -79,6 +79,9 @@ void ssd1683ConditionPanel(); // boot-only black/white ghosting cleanup
 size_t ssd1683BuildBmp(std::vector<uint8_t> &out);
 // Print the current canvas as a base64 BMP over Serial (framed by markers).
 void ssd1683SerialDumpScreenshot();
+// Full-screen OTA progress frame (drawn into the canvas like the other draw
+// helpers). percent < 0 draws the bar frame without a fill or percent label.
+void drawOtaProgress(int percent, const String &statusLine);
 #endif
 
 // Global Adafruit_GFX drawing target used by the shared text helpers below.

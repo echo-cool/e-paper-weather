@@ -268,9 +268,12 @@ void drawOutlookGraph(owm_hourly_t *const hourly, const owm_current_t &current,
 {
   (void)timeInfo;
 
-  const int hours = std::min(HOURLY_GRAPH_MAX, 30);
   const int pastHours = 6;
   const int rangeHours = 30; // -6h through +24h
+  // The Open-Meteo fetch requests past_hours=6 and forecast_hours=24, so
+  // hourly[] holds one entry per slot of the -6h..+24h axis. Plot all of them;
+  // capping below rangeHours leaves the tail of the chart empty.
+  const int hours = rangeHours;
   const int plotL = 31;
   const int plotR = DISP_WIDTH - 31;
   const int plotT = 169;
@@ -540,6 +543,40 @@ void drawError(const uint8_t *bitmap_196x196, const String &errMsgLn1,
     fb.setFont(&FONT_12pt8b);
     drawString(DISP_WIDTH / 2, DISP_HEIGHT / 2 + 24, errMsgLn2, CENTER, INK);
   }
+}
+
+// ---- OTA progress screen ----------------------------------------------------
+
+/* Full-screen firmware-update status: title, progress bar, and a status line.
+ * The panel only supports full refreshes (several seconds of flashing each), so
+ * callers should redraw at coarse milestones (e.g. every 25%) rather than per
+ * received chunk. percent < 0 draws the bar frame without a fill or percent
+ * label (used for the failure notice).
+ */
+void drawOtaProgress(int percent, const String &statusLine)
+{
+  fb.setFont(&FONT_16pt8b);
+  drawString(DISP_WIDTH / 2, 104, "Firmware Update", CENTER, INK);
+
+  const int barW = 280;
+  const int barH = 26;
+  const int barX = (DISP_WIDTH - barW) / 2;
+  const int barY = 132;
+  fb.drawRect(barX, barY, barW, barH, INK);
+  fb.drawRect(barX + 1, barY + 1, barW - 2, barH - 2, INK);
+  if (percent >= 0)
+  {
+    int pct = std::min(percent, 100);
+    int fillW = (barW - 8) * pct / 100;
+    if (fillW > 0)
+    {
+      fb.fillRect(barX + 4, barY + 4, fillW, barH - 8, INK);
+    }
+    fb.setFont(&FONT_12pt8b);
+    drawString(DISP_WIDTH / 2, barY + barH + 32, String(pct) + "%", CENTER, INK);
+  }
+  fb.setFont(&FONT_8pt8b);
+  drawString(DISP_WIDTH / 2, 224, statusLine, CENTER, INK);
 }
 
 // ---- Bit-banged SSD1683 panel driver ----------------------------------------

@@ -10,6 +10,7 @@
 
 #if OTA_ENABLED
 
+#include <algorithm>
 #include <Arduino.h>
 #include <vector>
 #include <WiFi.h>
@@ -23,6 +24,36 @@
 
 static WebServer server(80);
 static volatile bool otaBusy = false;
+
+#ifdef DISP_SSD1683
+// On-panel update feedback. The SSD1683 only does full refreshes (several
+// seconds of flashing each), so the progress bar advances in 25% milestones
+// instead of per received chunk: 0% at start, then 25/50/75, then a final
+// "complete - rebooting" (or failure) frame.
+static int otaShownPct = -1;         // last milestone drawn on the panel
+static size_t webUpdateTotal = 0;    // Content-Length of the running web upload
+
+static void otaShowScreen(int percent, const String &statusLine)
+{
+  initDisplay();
+  ssd1683BeginCanvas();
+  drawOtaProgress(percent, statusLine);
+  ssd1683CommitCanvas();
+  powerOffDisplay();
+}
+
+static void otaShowProgress(size_t received, size_t total)
+{
+  if (total == 0) return; // size unknown; the 0% start frame is already up
+  int pct = static_cast<int>(static_cast<uint64_t>(received) * 100 / total);
+  int milestone = std::min(pct, 99) / 25 * 25;
+  if (milestone > otaShownPct)
+  {
+    otaShownPct = milestone;
+    otaShowScreen(milestone, "Receiving firmware - do not power off");
+  }
+}
+#endif // DISP_SSD1683
 
 static String htmlEscape(const String &value)
 {
@@ -89,17 +120,37 @@ void initOTA()
   ArduinoOTA.onStart([]() {
     otaBusy = true;
     Serial.println("[ota] ArduinoOTA start");
+#ifdef DISP_SSD1683
+    otaShownPct = 0;
+    otaShowScreen(0, "Receiving firmware - do not power off");
+#endif
   });
   ArduinoOTA.onEnd([]() {
     Serial.println("\n[ota] ArduinoOTA end");
     otaBusy = false;
+#ifdef DISP_SSD1683
+    otaShowScreen(100, "Update complete - rebooting");
+#endif
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
     Serial.printf("[ota] %u%%\r", total ? (progress * 100u / total) : 0u);
+#ifdef DISP_SSD1683
+    otaShowProgress(progress, total);
+#endif
   });
   ArduinoOTA.onError([](ota_error_t error) {
     otaBusy = false;
     Serial.printf("[ota] error %u\n", error);
+#ifdef DISP_SSD1683
+    if (otaShownPct >= 0)
+    { // a transfer had started: replace the stale progress frame, then reboot
+      // back into the (unchanged) current firmware to redraw the weather.
+      otaShownPct = -1;
+      otaShowScreen(-1, "Update failed - rebooting");
+      delay(1000);
+      ESP.restart();
+    }
+#endif
   });
   ArduinoOTA.begin();
 
@@ -131,11 +182,17 @@ void initOTA()
   server.on(
       "/update", HTTP_POST,
       []() {
+        bool failed = Update.hasError();
         server.sendHeader("Connection", "close");
         server.send(200, "text/html",
-                    Update.hasError()
+                    failed
                         ? "<h1>Update failed.</h1><a href='/'>Back</a>"
                         : "<h1>Update OK &mdash; rebooting...</h1>");
+#ifdef DISP_SSD1683
+        otaShowScreen(failed ? -1 : 100,
+                      failed ? "Update failed - rebooting"
+                             : "Update complete - rebooting");
+#endif
         delay(500);
         ESP.restart();
       },
@@ -145,6 +202,14 @@ void initOTA()
         {
           otaBusy = true;
           Serial.printf("[ota] web update: %s\n", upload.filename.c_str());
+#ifdef DISP_SSD1683
+          // Content-Length covers the whole multipart body; the few hundred
+          // bytes of boundary overhead are negligible at 25% milestones.
+          webUpdateTotal = static_cast<size_t>(
+              std::max(server.clientContentLength(), 0));
+          otaShownPct = 0;
+          otaShowScreen(0, "Receiving firmware - do not power off");
+#endif
           if (!Update.begin(UPDATE_SIZE_UNKNOWN))
           {
             Update.printError(Serial);
@@ -156,6 +221,9 @@ void initOTA()
           {
             Update.printError(Serial);
           }
+#ifdef DISP_SSD1683
+          otaShowProgress(upload.totalSize, webUpdateTotal);
+#endif
         }
         else if (upload.status == UPLOAD_FILE_END)
         {
@@ -175,6 +243,14 @@ void initOTA()
           Update.end();
           otaBusy = false;
           Serial.println("[ota] web update aborted");
+#ifdef DISP_SSD1683
+          // The completion handler never runs for an aborted upload, so the
+          // panel would keep showing a stale progress bar. Reboot back into
+          // the (unchanged) current firmware to redraw the weather.
+          otaShowScreen(-1, "Update failed - rebooting");
+          delay(1000);
+          ESP.restart();
+#endif
         }
       });
   server.begin();
