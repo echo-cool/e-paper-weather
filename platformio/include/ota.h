@@ -33,5 +33,11 @@ void handleOTA();
  */
 bool otaInProgress();
 
+/* True once after the web UI requested an immediate weather refresh
+ * (POST /api/refresh). The flag clears on read; the caller performs the
+ * refresh outside any HTTP handler.
+ */
+bool otaConsumePendingRefresh();
+
 #endif // OTA_ENABLED
 #endif // __OTA_H__

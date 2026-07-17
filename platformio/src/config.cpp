@@ -84,8 +84,19 @@ const bool USE_SHT = true;
 #endif
 
 // WIFI
-const char *WIFI_SSID = "ASUS_BE92U_IoT";
-const char *WIFI_PASSWORD = "***REDACTED***";
+// Credentials live in an untracked secrets.h (copy secrets.h.example). If it is
+// absent (e.g. CI), these fall back to placeholders so the project still builds.
+#if __has_include("secrets.h")
+#include "secrets.h"
+#endif
+#ifndef SECRET_WIFI_SSID
+#define SECRET_WIFI_SSID "your-wifi-ssid"
+#endif
+#ifndef SECRET_WIFI_PASSWORD
+#define SECRET_WIFI_PASSWORD "your-wifi-password"
+#endif
+const char *WIFI_SSID = SECRET_WIFI_SSID;
+const char *WIFI_PASSWORD = SECRET_WIFI_PASSWORD;
 const unsigned long WIFI_TIMEOUT = 10000; // ms, WiFi connection timeout.
 
 // OTA (over-the-air firmware update)
@@ -102,29 +113,14 @@ const char *OTA_PASSWORD = "";
 //   -258 Deserialization Incomplete Input
 const unsigned HTTP_CLIENT_TCP_TIMEOUT = 10000; // ms
 
-// OPENWEATHERMAP API
-// OpenWeatherMap API key, https://openweathermap.org/
-const String OWM_APIKEY = "***REDACTED-OWM-KEY***";
-const String OWM_ENDPOINT = "api.openweathermap.org";
-// OpenWeatherMap One Call 2.5 API is deprecated for all new free users
-// (accounts created after Summer 2022).
-//
-// Please note, that One Call API 3.0 is included in the "One Call by Call"
-// subscription only. This separate subscription includes 1,000 calls/day for
-// free and allows you to pay only for the number of API calls made to this
-// product.
-//
-// Here’s how to subscribe and avoid any credit card changes:
-// - Go to https://home.openweathermap.org/subscriptions/billing_info/onecall_30/base?key=base&service=onecall_30
-// - Follow the instructions to complete the subscription.
-// - Go to https://home.openweathermap.org/subscriptions and set the "Calls per
-//   day (no more than)" to 1,000. This ensures you will never overrun the free
-//   calls.
-const String OWM_ONECALL_VERSION = "3.0";
+// WEATHER DATA SOURCE
+// Weather and air quality come from Open-Meteo (https://open-meteo.com) and
+// weather alerts from the US National Weather Service. Both are free and
+// require NO API key, so there is nothing to configure here.
 
 // LOCATION
-// Set your latitude and longitude.
-// (used to get weather data as part of API requests to OpenWeatherMap)
+// Initial latitude/longitude. These can be changed at runtime from the web UI
+// (city or postal code, geocoded via Open-Meteo) and are persisted to NVS.
 // lat=40.7128&lon=-74.0060 new york
 
 String LAT = "37.3541";

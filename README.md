@@ -17,6 +17,7 @@ from the device — see On-device screenshots below.)*
 ### Highlights
 
 - **Board:** Elecrow CrowPanel ESP32-S3 4.2" — ESP32-S3-WROOM-1-N8R8 (8 MB flash + 8 MB PSRAM), **SSD1683** e-paper controller, 400×300 black/white.
+- **No API key required:** weather and air quality come from [Open-Meteo](https://open-meteo.com) and alerts from the US National Weather Service — all free and key-less. City/postal-code lookups use Open-Meteo geocoding.
 - **Always-on + OTA:** stays awake on Wi-Fi and refreshes on an interval (no deep sleep). Update firmware over the air from a browser at `http://<device-ip>/`, or with `pio ... -t upload` over `espota` — no USB needed after the first flash.
 - **Web-based location config:** set the weather location by city or postal code from the same page; it is geocoded and saved to NVS (no reflash required).
 - **On-device screenshots:** the exact rendered frame is served at `http://<device-ip>/screenshot.bmp` (and dumped as base64 over serial), so you can see what's on the panel without looking at it.
@@ -36,7 +37,7 @@ The e-paper is integrated on the board, so these GPIOs are fixed (defined in [co
 ### Build, flash, and configure
 
 1. Open the `platformio` folder in VS Code with the PlatformIO extension.
-2. Set your Wi-Fi credentials and OpenWeatherMap API key in [config.cpp](platformio/src/config.cpp).
+2. Set your Wi-Fi credentials: `cp platformio/include/secrets.h.example platformio/include/secrets.h` and edit it. `secrets.h` is gitignored. **No weather API key is needed** — data comes from Open-Meteo. Set the initial location in [config.cpp](platformio/src/config.cpp) (or change it later from the web UI).
 3. Build & upload the `crowpanel_esp32s3_42_epaper` environment.
    - On **Windows**, run PlatformIO from **PowerShell** (`pio run -e crowpanel_esp32s3_42_epaper -t upload`); running `pio` under Git Bash / MSYS trips the toolchain's esptool packaging.
 4. After the first USB flash, update over the air: open `http://<device-ip>/` (the IP is printed on serial as "OTA ready") and upload a new `firmware.bin`, or set `upload_protocol = espota` and `upload_port = <ip>` in [platformio.ini](platformio/platformio.ini).
@@ -318,6 +319,8 @@ PlatformIO for VSCode is used for managing dependencies, code compilation, and u
       - If you are getting errors during the upload process, you may need to install drivers to allow you to upload code to the ESP32.
 
 ### OpenWeatherMap API Key
+
+> **Not needed for the CrowPanel build.** This fork uses Open-Meteo (no API key). The section below applies only to the original 7.5" OpenWeatherMap-based build.
 
 Sign up here to get an API key; it's free. <https://openweathermap.org/api>
 

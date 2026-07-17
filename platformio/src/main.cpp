@@ -577,6 +577,15 @@ void loop()
   handleOTA();
 #endif
 
+  // An immediate refresh requested from the web control center jumps the
+  // periodic schedule. Left queued while a firmware upload is running.
+#if OTA_ENABLED
+  if (!otaInProgress() && otaConsumePendingRefresh())
+  {
+    firstUpdateDone = false;
+  }
+#endif
+
   // Periodic display refresh (skipped while a firmware upload is in progress).
   const unsigned long intervalMs =
       static_cast<unsigned long>(SLEEP_DURATION) * 60UL * 1000UL;
