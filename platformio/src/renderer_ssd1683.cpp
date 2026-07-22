@@ -343,11 +343,13 @@ void drawOutlookGraph(owm_hourly_t *const hourly, const owm_current_t &current,
   if (!s_chartAlertBanner.isEmpty())
   {
     // An alert is active: replace the legend row with an inverted warning
-    // banner. Drawn here (before the now-time marker below) so that marker
-    // stays legible on top of it. The full alert text shows on the alternating
+    // banner spanning the full width. The text is left-aligned starting past
+    // x=124 so it stays clear of the current-time marker (a white box centred
+    // near x=99 that is drawn on top of this row later); a long banner simply
+    // clips at the right edge. The full alert text shows on the alternating
     // alert page.
     fb.fillRect(0, 153, DISP_WIDTH, 13, INK);
-    drawString(DISP_WIDTH / 2, 163, s_chartAlertBanner, CENTER, BG);
+    drawString(124, 163, s_chartAlertBanner, LEFT, BG);
     s_chartAlertBanner = "";
   }
   else
@@ -535,8 +537,8 @@ void setChartAlertBanner(const String &event, size_t extraAlerts)
     return;
   }
   String banner = "! " + event;
-  if (extraAlerts > 0) banner += "  +" + String(extraAlerts) + " more";
-  banner += "  --  details on next refresh";
+  if (extraAlerts > 0) banner += " +" + String(extraAlerts);
+  banner += "  -  details next refresh";
   s_chartAlertBanner = banner;
 }
 
