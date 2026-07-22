@@ -39,12 +39,55 @@
 #ifdef USE_HTTPS_WITH_CERT_VERIF
 #include "cert.h"
 #endif
+#if WIFI_PORTAL_ENABLED
+#include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
+#endif
 
 // too large to allocate locally on stack
 static owm_resp_onecall_t owm_onecall;
 static owm_resp_air_pollution_t owm_air_pollution;
 
 Preferences prefs;
+
+// Alternates the lower panel between the outlook chart and the full alert text
+// on successive refreshes while alerts are active. Stored in RTC memory so it
+// survives deep sleep on battery builds; behaves as a plain counter always-on.
+RTC_DATA_ATTR static uint32_t alertViewCounter = 0;
+
+/* Draw the lower panel. With no active alert it is always the outlook chart.
+ * When alerts are active, alternate each refresh between the outlook chart
+ * (with a compact alert reminder overlaid) and the full alert text page, so the
+ * user keeps seeing both the forecast trend and the alert details over time.
+ */
+static void drawLowerPanel(tm timeInfo, const String &dateStr)
+{
+#if DISPLAY_ALERTS
+  const bool hasAlerts = !owm_onecall.alerts.empty();
+  const bool showAlertPage = hasAlerts && (alertViewCounter % 2 == 1);
+  if (hasAlerts)
+  {
+    ++alertViewCounter;
+  }
+  if (showAlertPage)
+  {
+    drawAlerts(owm_onecall.alerts, CITY_STRING, dateStr);
+    return;
+  }
+#ifdef DISP_SSD1683
+  // Arm the reminder before drawing so it lands in the chart's legend row and
+  // the chart's own now-time marker stays on top of it.
+  if (hasAlerts)
+  {
+    setChartAlertBanner(owm_onecall.alerts.front().event,
+                        owm_onecall.alerts.size() - 1);
+  }
+#endif
+  drawOutlookGraph(owm_onecall.hourly, owm_onecall.current, timeInfo);
+#else
+  (void)dateStr;
+  drawOutlookGraph(owm_onecall.hourly, owm_onecall.current, timeInfo);
+#endif
+}
 
 /* Put esp32 into ultra low-power deep sleep (<11μA).
  * Aligns wake time to the minute. Sleep times defined in config.cpp.
@@ -368,10 +411,7 @@ void setup()
                           owm_air_pollution, inTemp, inHumidity);
     drawForecast(owm_onecall.daily, timeInfo);
     drawLocationDate(CITY_STRING, dateStr);
-    drawOutlookGraph(owm_onecall.hourly, owm_onecall.current, timeInfo);
-#if DISPLAY_ALERTS
-    drawAlerts(owm_onecall.alerts, CITY_STRING, dateStr);
-#endif
+    drawLowerPanel(timeInfo, dateStr);
     drawStatusBar(statusStr, refreshTimeStr, wifiRSSI, batteryVoltage);
   } while (display.nextPage());
   powerOffDisplay();
@@ -407,6 +447,55 @@ static void showMessage(const uint8_t *bitmap, const String &ln1,
   ssd1683CommitCanvas();
   powerOffDisplay();
 }
+
+#if WIFI_PORTAL_ENABLED
+/* Show the captive-portal setup instructions on the panel. */
+static void showWiFiSetup()
+{
+  initDisplay();
+  ssd1683BeginCanvas();
+  drawWiFiSetup(WIFI_PORTAL_AP_NAME, "http://192.168.4.1");
+  ssd1683CommitCanvas();
+  powerOffDisplay();
+}
+
+/* Connect to WiFi, falling back to a WiFiManager captive portal when no usable
+ * credentials are available.
+ *   1. If real credentials were compiled in (secrets.h), try them first.
+ *   2. Otherwise WiFiManager connects with NVS-saved credentials, or opens the
+ *      setup AP so the user can enter them from a phone. The portal blocks
+ *      (no timeout) until WiFi is configured; saved credentials are reused on
+ *      later boots.
+ */
+static wl_status_t connectWiFiWithPortal(int &wifiRSSI)
+{
+  const bool haveCompiledCreds =
+      strlen(WIFI_SSID) > 0 && strcmp(WIFI_SSID, "your-wifi-ssid") != 0;
+  if (haveCompiledCreds)
+  {
+    if (startWiFi(wifiRSSI) == WL_CONNECTED)
+    {
+      return WL_CONNECTED;
+    }
+  }
+
+  WiFiManager wm;
+  wm.setConfigPortalTimeout(0); // stay open until the user finishes setup
+  wm.setAPCallback([](WiFiManager *mgr) {
+    (void)mgr;
+    Serial.println("[wifi] setup portal open: join '" WIFI_PORTAL_AP_NAME "'");
+    showWiFiSetup();
+  });
+  bool connected = wm.autoConnect(WIFI_PORTAL_AP_NAME);
+  if (connected)
+  {
+    wifiRSSI = WiFi.RSSI();
+    Serial.println("IP: " + WiFi.localIP().toString());
+    return WL_CONNECTED;
+  }
+  return WiFi.status();
+}
+#endif // WIFI_PORTAL_ENABLED
 
 /* Fetch weather data and render the display once. Assumes WiFi is connected.
  * Never sleeps and never drops WiFi (OTA must stay reachable). On an API error
@@ -475,10 +564,7 @@ static void runWeatherUpdate()
                         owm_air_pollution, inTemp, inHumidity);
   drawForecast(owm_onecall.daily, timeInfo);
   drawLocationDate(CITY_STRING, dateStr);
-  drawOutlookGraph(owm_onecall.hourly, owm_onecall.current, timeInfo);
-#if DISPLAY_ALERTS
-  drawAlerts(owm_onecall.alerts, CITY_STRING, dateStr);
-#endif
+  drawLowerPanel(timeInfo, dateStr);
   drawStatusBar(statusStr, refreshTimeStr, wifiRSSI, UINT32_MAX);
   ssd1683CommitCanvas();
   powerOffDisplay();
@@ -508,9 +594,17 @@ void setup()
 
   // START WIFI (kept connected for the lifetime of the device)
   int wifiRSSI = 0;
+#if WIFI_PORTAL_ENABLED
+  // Blocks in a captive portal until WiFi is configured if no working
+  // credentials are stored, so the panel never gets stranded on a failed
+  // connection with no way to recover short of a re-flash.
+  wl_status_t wifiStatus = connectWiFiWithPortal(wifiRSSI);
+  WiFi.setAutoReconnect(true);
+#else
   wl_status_t wifiStatus = startWiFi(wifiRSSI);
   WiFi.setAutoReconnect(true);
   WiFi.persistent(false);
+#endif
 
   if (wifiStatus != WL_CONNECTED)
   { // show an error now; loop() will keep retrying the connection

@@ -291,6 +291,20 @@
 #else
 #define OTA_ENABLED 0
 #endif
+// WIFI CAPTIVE-PORTAL PROVISIONING
+//   When WIFI_PORTAL_ENABLED = 1, if the compiled/saved WiFi credentials fail
+//   to connect the device starts a WiFiManager captive portal (its own SoftAP)
+//   so WiFi can be configured from a phone or laptop instead of re-flashing.
+//   Credentials entered in the portal are saved to NVS and reused on later
+//   boots. Enabled via the -DENABLE_WIFI_PORTAL build flag; needs ALWAYS_ON.
+#if ALWAYS_ON && defined(ENABLE_WIFI_PORTAL)
+#define WIFI_PORTAL_ENABLED 1
+#else
+#define WIFI_PORTAL_ENABLED 0
+#endif
+// SoftAP name shown to users while the setup portal is open (open network).
+#define WIFI_PORTAL_AP_NAME "CrowPanel-Weather-Setup"
+
 // Firmware version string, shown on the OTA web page and serial log.
 #define FW_VERSION "1.8-crowpanel"
 

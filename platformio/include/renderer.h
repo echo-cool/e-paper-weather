@@ -115,6 +115,13 @@ void drawAlerts(std::vector<owm_alerts_t> &alerts,
                 const String &city, const String &date);
 void drawLocationDate(const String &city, const String &date);
 void drawOutlookGraph(owm_hourly_t *const hourly, const owm_current_t &current, tm timeInfo);
+#ifdef DISP_SSD1683
+// Arm a compact alert reminder over the outlook chart's legend row, consumed by
+// the next drawOutlookGraph() (SSD1683 layout only). Empty event clears it.
+void setChartAlertBanner(const String &event, size_t extraAlerts);
+// Full-screen WiFi captive-portal setup instructions (SSD1683 layout only).
+void drawWiFiSetup(const String &apName, const String &url);
+#endif
 void drawStatusBar(const String &statusStr, const String &refreshTimeStr,
                    int rssi, uint32_t batVoltage);
 void drawError(const uint8_t *bitmap_196x196,

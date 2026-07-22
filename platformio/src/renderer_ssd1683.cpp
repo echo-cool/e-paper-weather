@@ -61,6 +61,11 @@ static const int MAIN_BOTTOM   = 151; // compact summary; larger lower chart
 static const int STATUS_TOP    = 287; // separator above status bar
 static const int COL_DIVIDER_X = 198; // vertical divider between current & stats
 
+// Optional alert reminder shown in place of the outlook chart's legend row.
+// Set with setChartAlertBanner() before drawOutlookGraph(); it is consumed
+// (cleared) by that call so it never leaks into an alert-free refresh.
+static String s_chartAlertBanner;
+
 // ---- Small helpers ----------------------------------------------------------
 
 // Nearest-neighbour downscale for monochrome weather icons. The source assets
@@ -335,12 +340,25 @@ void drawOutlookGraph(owm_hourly_t *const hourly, const owm_current_t &current,
   if (tempScaleMax <= tempScaleMin) tempScaleMax = tempScaleMin + 5.0f;
 
   fb.setFont(&FONT_5pt8b);
-  String precipLegend = String("P dots ") +
-      String(precipScale, precipScale < 1.0f ? 1 : 0) + precipUnit;
-  drawString(2, 163, precipLegend, LEFT, INK);
-  drawString(DISP_WIDTH / 2, 163, "Temp line", CENTER, INK);
-  drawString(DISP_WIDTH - 2, 163,
-             String("UV bars ") + String(static_cast<int>(uvScale)), RIGHT, INK);
+  if (!s_chartAlertBanner.isEmpty())
+  {
+    // An alert is active: replace the legend row with an inverted warning
+    // banner. Drawn here (before the now-time marker below) so that marker
+    // stays legible on top of it. The full alert text shows on the alternating
+    // alert page.
+    fb.fillRect(0, 153, DISP_WIDTH, 13, INK);
+    drawString(DISP_WIDTH / 2, 163, s_chartAlertBanner, CENTER, BG);
+    s_chartAlertBanner = "";
+  }
+  else
+  {
+    String precipLegend = String("P dots ") +
+        String(precipScale, precipScale < 1.0f ? 1 : 0) + precipUnit;
+    drawString(2, 163, precipLegend, LEFT, INK);
+    drawString(DISP_WIDTH / 2, 163, "Temp line", CENTER, INK);
+    drawString(DISP_WIDTH - 2, 163,
+               String("UV bars ") + String(static_cast<int>(uvScale)), RIGHT, INK);
+  }
 
   // Temperature uses the left scale. Precipitation dotted bars and solid UV
   // bars are normalized to the maxima printed in the legend.
@@ -496,14 +514,32 @@ void drawAlerts(std::vector<owm_alerts_t> &alerts, const String &city,
   fb.setFont(&FONT_7pt8b);
   String detail = alert.description;
   if (detail.isEmpty()) detail = "See local authorities for details.";
+  // Cap the body at 6 lines so the last line clears the source/attribution row
+  // (y=284) and the status bar below it, instead of overprinting them.
   drawMultiLnString(8, MAIN_BOTTOM + 43, detail, LEFT,
-                    DISP_WIDTH - 16, 7, 15, INK);
+                    DISP_WIDTH - 16, 6, 15, INK);
 
   fb.setFont(&FONT_5pt8b);
   String source = alert.sender_name;
   if (alerts.size() > 1) source += "  +" + String(alerts.size() - 1) + " more";
   drawString(DISP_WIDTH - 5, 284, source, RIGHT, INK);
 }
+
+/* Arm a one-line alert reminder to be drawn over the outlook chart's legend
+ * row on the next drawOutlookGraph() call. Pass an empty event to clear it. */
+void setChartAlertBanner(const String &event, size_t extraAlerts)
+{
+  if (event.isEmpty())
+  {
+    s_chartAlertBanner = "";
+    return;
+  }
+  String banner = "! " + event;
+  if (extraAlerts > 0) banner += "  +" + String(extraAlerts) + " more";
+  banner += "  --  details on next refresh";
+  s_chartAlertBanner = banner;
+}
+
 
 // ---- Status bar -------------------------------------------------------------
 
@@ -532,6 +568,34 @@ void drawStatusBar(const String &statusStr, const String &refreshTimeStr,
   {
     drawString(DISP_WIDTH / 2, y, statusStr, CENTER, INK);
   }
+}
+
+// ---- WiFi setup screen ------------------------------------------------------
+
+/* Full-screen captive-portal instructions, shown while the WiFiManager setup
+ * AP is open so the user knows how to configure WiFi from a phone. */
+void drawWiFiSetup(const String &apName, const String &url)
+{
+  fb.setFont(&FONT_16pt8b);
+  drawString(DISP_WIDTH / 2, 40, "Wi-Fi Setup", CENTER, INK);
+  fb.drawFastHLine(40, 52, DISP_WIDTH - 80, INK);
+
+  fb.setFont(&FONT_8pt8b);
+  drawString(20, 90, "1.  On a phone or laptop, join this Wi-Fi network:",
+             LEFT, INK);
+  fb.setFont(&FONT_12pt8b);
+  drawString(DISP_WIDTH / 2, 120, apName, CENTER, INK);
+
+  fb.setFont(&FONT_8pt8b);
+  drawString(20, 160, "2.  A setup page opens automatically. If it does not,",
+             LEFT, INK);
+  drawString(38, 182, "open a browser to  " + url, LEFT, INK);
+
+  drawString(20, 222, "3.  Choose your Wi-Fi network and enter its password.",
+             LEFT, INK);
+  fb.setFont(&FONT_7pt8b);
+  drawString(DISP_WIDTH / 2, 262,
+             "The panel reconnects automatically once saved.", CENTER, INK);
 }
 
 // ---- Error screen -----------------------------------------------------------
